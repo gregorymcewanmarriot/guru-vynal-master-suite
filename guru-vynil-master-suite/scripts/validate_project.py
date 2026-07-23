@@ -52,6 +52,10 @@ if "dryBuffer.setSize" not in processor:
     errors.append("dryBuffer must be allocated in prepareToPlay")
 if "deltaAudition" in dsp_cpp or "deltaAudition" in dsp_h:
     errors.append("VinylMasterDSP must not apply or know about delta audition")
+limiter_pos = dsp_cpp.find("limiter.process")
+output_peak_pos = dsp_cpp.find("blockOutputPeak", limiter_pos)
+if limiter_pos < 0 or output_peak_pos < limiter_pos:
+    errors.append("Output metering must be based on the final limiter output")
 if 'setParameter("bassWidth", 0.0f);' not in editor:
     errors.append("AUTO SAFE Low Width must be 0%")
 if '{ -1.0f, 28.0f, 145.0f, 15.0f, 5800.0f, -22.0f, 6.5f, 22.0f, -1.2f, 0.0f }' not in editor:

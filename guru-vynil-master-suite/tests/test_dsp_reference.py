@@ -48,6 +48,9 @@ process_block = processor_cpp[
 ]
 
 assert "deltaAudition" not in dsp_cpp, "DELTA must not affect DSP readiness or metering analysis"
+limiter_pos = dsp_cpp.index("limiter.process")
+output_meter_pos = dsp_cpp.index("blockOutputPeak", limiter_pos)
+assert limiter_pos < output_meter_pos, "Output meters must observe final limiter output"
 assert process_block.index("dsp.process") < process_block.index("if (bypassed)") < process_block.index("else if (deltaAudition)")
 assert "buffer.copyFrom(channel, 0, dryBuffer" in process_block, "BYPASS must restore dry audio after DSP analysis"
 assert "buffer.applyGain(channel, 0, samplesToCopy, -1.0f)" in process_block
