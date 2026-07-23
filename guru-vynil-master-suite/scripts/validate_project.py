@@ -34,7 +34,7 @@ attachment_ids = set(re.findall(r'configureKnob\([^,]+,\s*"([A-Za-z0-9_]+)"', ed
 expected_strings = {
     "inputGain", "subsonic", "bassMono", "bassWidth", "deEssFreq",
     "deEssThreshold", "deEssAmount", "softClip", "outputCeiling",
-    "outputGain", "bypass",
+    "outputGain", "bypass", "delta",
 }
 
 for param_id in sorted(string_ids | attachment_ids | {"bypass"}):

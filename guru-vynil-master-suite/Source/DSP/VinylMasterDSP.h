@@ -15,6 +15,7 @@ struct GuruVinylParameters
     float softClipPercent = 15.0f;
     float outputCeilingDb = -1.0f;
     float outputGainDb = 0.0f;
+    bool deltaAudition = false;
 };
 
 class VinylMasterDSP
@@ -28,10 +29,16 @@ public:
 
     float getInputPeakDb() const noexcept { return inputPeakDb.load(); }
     float getOutputPeakDb() const noexcept { return outputPeakDb.load(); }
+    float getInputPeakHoldDb() const noexcept { return inputPeakHoldDb.load(); }
+    float getOutputPeakHoldDb() const noexcept { return outputPeakHoldDb.load(); }
     float getCorrelation() const noexcept { return correlation.load(); }
     float getLowSideDb() const noexcept { return lowSideDb.load(); }
     float getDeEssReductionDb() const noexcept { return deEssReductionDb.load(); }
     float getRiskScore() const noexcept { return riskScore.load(); }
+    bool hasSignal() const noexcept { return signalPresent.load(); }
+    bool isAnalysisReady() const noexcept { return analysisReady.load(); }
+    bool hasOverloadWarning() const noexcept { return overloadWarning.load(); }
+    bool hasCeilingWarning() const noexcept { return ceilingWarning.load(); }
 
 private:
     void updateFilters(const GuruVinylParameters& params);
@@ -60,10 +67,20 @@ private:
 
     std::atomic<float> inputPeakDb { -100.0f };
     std::atomic<float> outputPeakDb { -100.0f };
+    std::atomic<float> inputPeakHoldDb { -100.0f };
+    std::atomic<float> outputPeakHoldDb { -100.0f };
     std::atomic<float> correlation { 1.0f };
     std::atomic<float> lowSideDb { -100.0f };
     std::atomic<float> deEssReductionDb { 0.0f };
     std::atomic<float> riskScore { 0.0f };
+    std::atomic<bool> signalPresent { false };
+    std::atomic<bool> analysisReady { false };
+    std::atomic<bool> overloadWarning { false };
+    std::atomic<bool> ceilingWarning { false };
+    double analysedSeconds = 0.0;
+    float averagedRisk = 0.0f;
+    float inputPeakHold = 0.0f;
+    float outputPeakHold = 0.0f;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(VinylMasterDSP)
 };

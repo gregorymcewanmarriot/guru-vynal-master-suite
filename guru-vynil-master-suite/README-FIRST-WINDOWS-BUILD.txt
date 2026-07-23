@@ -1,11 +1,11 @@
-GURU Vynil Master Suite v0.1.1
+GURU Vynil Master Suite v0.1.2
 ================================
 
 YOU DO NOT NEED VISUAL STUDIO, CMAKE OR GIT.
 
 This package includes a GitHub cloud workflow that creates:
 
-  GURU-Vynil-Master-Suite-Setup-0.1.1-Windows-x64.exe
+  GURU-Vynil-Master-Suite-Setup-0.1.2-Windows-x64.exe
 
 Read CLOUD-BUILD-INSTRUCTIONS.md for the browser-only steps.
 

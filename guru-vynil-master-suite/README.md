@@ -6,7 +6,7 @@ A transparent vinyl pre-mastering processor for preparing stereo masters before 
 
 ## Version
 
-Prototype **v0.1.1**
+Prototype **v0.1.2**
 
 ## Included processing
 
@@ -15,11 +15,14 @@ Prototype **v0.1.1**
 - Linked stereo high-frequency dynamic control
 - Adjustable soft clipping
 - Output safety limiter
-- Input/output peak, correlation, low-side energy and HF-reduction metering
-- Real-time cut-readiness estimate
+- Input/output peak, peak-hold, correlation, low-side energy and HF-reduction metering
+- NO SIGNAL, ANALYSING, READY, REVIEW and CUT RISK readiness states averaged over several seconds
+- DELTA audition for hearing only the processing difference
+- Overload and ceiling warnings with units and tooltips throughout
 - Nine starting presets
 - Resizable dark interface
-- VST3 and standalone builds on Windows
+- VST3 and standalone x64 builds on Windows
+- Retained x86 VST3 installer workflow for Adobe Audition CS6 compatibility
 - VST3, AU and standalone builds on macOS
 
 ## Important mastering note
@@ -76,7 +79,7 @@ build\GuruVynilMasterSuite_artefacts\Release\VST3\
 ### v0.2
 
 - True-peak oversampled limiter
-- Level-matched bypass and delta audition
+- Level-matched bypass
 - Frequency-banded correlation display
 - Improved de-esser with selectable split-band and broadband modes
 - Parameter smoothing throughout

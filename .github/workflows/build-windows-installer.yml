@@ -6,7 +6,7 @@ name: Build Windows Installer
       version:
         description: Installer version
         required: true
-        default: "0.1.1"
+        default: "0.1.2"
   push:
     tags:
       - "v*"
