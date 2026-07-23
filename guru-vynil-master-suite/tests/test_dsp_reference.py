@@ -50,10 +50,18 @@ process_block = processor_cpp[
 assert "deltaAudition" not in dsp_cpp, "DELTA must not affect DSP readiness or metering analysis"
 assert process_block.index("dsp.process") < process_block.index("if (bypassed)") < process_block.index("else if (deltaAudition)")
 assert "buffer.copyFrom(channel, 0, dryBuffer" in process_block, "BYPASS must restore dry audio after DSP analysis"
-assert "buffer.addFrom(channel, 0, dryBuffer, channel, 0, samplesToCopy, -1.0f)" in process_block
-assert "buffer.applyGain(-1.0f)" in process_block, "DELTA must output dry minus fully processed audio"
+assert "buffer.applyGain(channel, 0, samplesToCopy, -1.0f)" in process_block
+assert "buffer.addFrom(channel, 0, dryBuffer, channel, 0, samplesToCopy)" in process_block, "DELTA must output dry minus fully processed audio"
 assert "juce::AudioBuffer<float> dry" not in process_block
 assert "setSize(" not in process_block
 assert "makeCopyOf(" not in process_block
 
 print("Processor output-mode reference checks passed.")
+
+editor_cpp = (ROOT / "Source/PluginEditor.cpp").read_text(encoding="utf-8")
+editor_h = (ROOT / "Source/PluginEditor.h").read_text(encoding="utf-8")
+assert 'setParameter("bassWidth", 0.0f);' in editor_cpp, "AUTO SAFE must set Low Width to 0%"
+assert '{ -1.0f, 28.0f, 145.0f, 15.0f, 5800.0f, -22.0f, 6.5f, 22.0f, -1.2f, 0.0f }' in editor_cpp, "Extreme Metal Low Width must be exactly 15%"
+assert "juce::TooltipWindow tooltipWindow" in editor_h, "PluginEditor must own a TooltipWindow for setTooltip calls"
+
+print("Editor regression reference checks passed.")

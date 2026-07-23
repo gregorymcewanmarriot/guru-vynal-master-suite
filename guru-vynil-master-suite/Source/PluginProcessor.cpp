@@ -77,9 +77,10 @@ void GuruVynilMasterSuiteAudioProcessor::processBlock(juce::AudioBuffer<float>& 
     else if (deltaAudition)
     {
         for (int channel = 0; channel < channelsToCopy; ++channel)
-            buffer.addFrom(channel, 0, dryBuffer, channel, 0, samplesToCopy, -1.0f);
-
-        buffer.applyGain(-1.0f);
+        {
+            buffer.applyGain(channel, 0, samplesToCopy, -1.0f);
+            buffer.addFrom(channel, 0, dryBuffer, channel, 0, samplesToCopy);
+        }
     }
 }
 

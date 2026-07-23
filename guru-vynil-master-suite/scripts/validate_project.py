@@ -43,8 +43,8 @@ else:
     dsp_pos = body.find("dsp.process")
     if min(bypass_pos, delta_pos, dsp_pos) < 0 or not (dsp_pos < bypass_pos < delta_pos):
         errors.append("processBlock must process first, then apply bypass before delta")
-    if "dryBuffer.copyFrom" not in body or "buffer.addFrom" not in body:
-        errors.append("processBlock must use reusable dryBuffer for dry/delta output")
+    if "dryBuffer.copyFrom" not in body or "buffer.applyGain(channel, 0, samplesToCopy, -1.0f)" not in body or "buffer.addFrom(channel, 0, dryBuffer" not in body:
+        errors.append("processBlock must use reusable dryBuffer for dry/bypass and dry-minus-processed delta output")
 
 if "juce::AudioBuffer<float> dryBuffer" not in processor_h:
     errors.append("PluginProcessor must own a reusable dryBuffer member")
@@ -52,6 +52,12 @@ if "dryBuffer.setSize" not in processor:
     errors.append("dryBuffer must be allocated in prepareToPlay")
 if "deltaAudition" in dsp_cpp or "deltaAudition" in dsp_h:
     errors.append("VinylMasterDSP must not apply or know about delta audition")
+if 'setParameter("bassWidth", 0.0f);' not in editor:
+    errors.append("AUTO SAFE Low Width must be 0%")
+if '{ -1.0f, 28.0f, 145.0f, 15.0f, 5800.0f, -22.0f, 6.5f, 22.0f, -1.2f, 0.0f }' not in editor:
+    errors.append("Extreme Metal Low Width must be exactly 15%")
+if "juce::TooltipWindow tooltipWindow" not in (ROOT / "Source/PluginEditor.h").read_text(encoding="utf-8"):
+    errors.append("PluginEditor must own a TooltipWindow for tooltips")
 
 
 created_ids = set(re.findall(r'ParamIDs::([A-Za-z0-9_]+)', processor))
