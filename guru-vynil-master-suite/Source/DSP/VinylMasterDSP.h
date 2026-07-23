@@ -15,7 +15,6 @@ struct GuruVinylParameters
     float softClipPercent = 15.0f;
     float outputCeilingDb = -1.0f;
     float outputGainDb = 0.0f;
-    bool deltaAudition = false;
 };
 
 class VinylMasterDSP

@@ -52,7 +52,7 @@ GuruVynilMasterSuiteAudioProcessorEditor::GuruVynilMasterSuiteAudioProcessorEdit
     {
         setParameter("subsonic", 28.0f);
         setParameter("bassMono", 145.0f);
-        setParameter("bassWidth", 12.0f);
+        setParameter("bassWidth", 0.0f);
         setParameter("deEssThreshold", -21.0f);
         setParameter("deEssAmount", 5.0f);
         setParameter("softClip", 10.0f);
@@ -281,7 +281,7 @@ void GuruVynilMasterSuiteAudioProcessorEditor::applyPreset(int presetIndex)
         { 0.0f, 25.0f, 125.0f, 15.0f, 7000.0f, -18.0f, 4.0f, 12.0f, -1.0f, 0.0f },
         { -1.0f, 30.0f, 170.0f, 0.0f, 6200.0f, -21.0f, 6.0f, 8.0f, -1.5f, 0.0f },
         { -0.5f, 25.0f, 120.0f, 12.0f, 6600.0f, -18.0f, 4.5f, 18.0f, -1.0f, 0.0f },
-        { -1.0f, 28.0f, 145.0f, 12.0f, 5800.0f, -22.0f, 6.5f, 22.0f, -1.2f, 0.0f },
+        { -1.0f, 28.0f, 145.0f, 15.0f, 5800.0f, -22.0f, 6.5f, 22.0f, -1.2f, 0.0f },
         { -1.0f, 30.0f, 180.0f, 0.0f, 7400.0f, -17.0f, 3.0f, 15.0f, -1.2f, 0.0f },
         { 0.0f, 20.0f, 90.0f, 45.0f, 8200.0f, -14.0f, 2.5f, 4.0f, -1.0f, 0.0f },
         { 0.0f, 15.0f, 60.0f, 100.0f, 12000.0f, 0.0f, 0.0f, 0.0f, -0.1f, 0.0f }

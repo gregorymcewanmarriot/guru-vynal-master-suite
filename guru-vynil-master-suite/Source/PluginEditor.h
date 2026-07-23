@@ -33,6 +33,7 @@ private:
 
     GuruVynilMasterSuiteAudioProcessor& processor;
     GuruLookAndFeel lookAndFeel;
+    juce::TooltipWindow tooltipWindow { this, 700 };
 
     Knob input;
     Knob subsonic;

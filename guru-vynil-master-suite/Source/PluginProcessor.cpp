@@ -32,6 +32,7 @@ void GuruVynilMasterSuiteAudioProcessor::prepareToPlay(double newSampleRate, int
     spec.maximumBlockSize = static_cast<juce::uint32>(samplesPerBlock);
     spec.numChannels = static_cast<juce::uint32>(getTotalNumOutputChannels());
     dsp.prepare(spec);
+    dryBuffer.setSize(static_cast<int>(spec.numChannels), static_cast<int>(spec.maximumBlockSize));
 }
 
 void GuruVynilMasterSuiteAudioProcessor::releaseResources()
@@ -55,14 +56,31 @@ void GuruVynilMasterSuiteAudioProcessor::processBlock(juce::AudioBuffer<float>& 
         buffer.clear(channel, 0, buffer.getNumSamples());
 
     const auto bypassed = apvts.getRawParameterValue(ParamIDs::bypass)->load() >= 0.5f;
-    juce::AudioBuffer<float> dryBuffer;
-    if (bypassed)
-        dryBuffer.makeCopyOf(buffer);
+    const auto deltaAudition = apvts.getRawParameterValue(ParamIDs::delta)->load() >= 0.5f;
+    const auto channelsToCopy = juce::jmin(buffer.getNumChannels(), dryBuffer.getNumChannels());
+    const auto samplesToCopy = juce::jmin(buffer.getNumSamples(), dryBuffer.getNumSamples());
+
+    if (bypassed || deltaAudition)
+    {
+        jassert(buffer.getNumSamples() <= dryBuffer.getNumSamples());
+        for (int channel = 0; channel < channelsToCopy; ++channel)
+            dryBuffer.copyFrom(channel, 0, buffer, channel, 0, samplesToCopy);
+    }
 
     dsp.process(buffer, getCurrentParameters());
 
     if (bypassed)
-        buffer.makeCopyOf(dryBuffer);
+    {
+        for (int channel = 0; channel < channelsToCopy; ++channel)
+            buffer.copyFrom(channel, 0, dryBuffer, channel, 0, samplesToCopy);
+    }
+    else if (deltaAudition)
+    {
+        for (int channel = 0; channel < channelsToCopy; ++channel)
+            buffer.addFrom(channel, 0, dryBuffer, channel, 0, samplesToCopy, -1.0f);
+
+        buffer.applyGain(-1.0f);
+    }
 }
 
 juce::AudioProcessorEditor* GuruVynilMasterSuiteAudioProcessor::createEditor()
@@ -96,7 +114,6 @@ GuruVinylParameters GuruVynilMasterSuiteAudioProcessor::getCurrentParameters() c
     p.softClipPercent = apvts.getRawParameterValue(ParamIDs::softClip)->load();
     p.outputCeilingDb = apvts.getRawParameterValue(ParamIDs::outputCeiling)->load();
     p.outputGainDb = apvts.getRawParameterValue(ParamIDs::outputGain)->load();
-    p.deltaAudition = apvts.getRawParameterValue(ParamIDs::delta)->load() >= 0.5f;
     return p;
 }
 

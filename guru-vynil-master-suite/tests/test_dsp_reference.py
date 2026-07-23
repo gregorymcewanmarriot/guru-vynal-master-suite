@@ -36,3 +36,24 @@ for amount in (0.0, 0.25, 0.5, 1.0):
             assert result == value
 
 print("DSP reference checks passed.")
+
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+processor_cpp = (ROOT / "Source/PluginProcessor.cpp").read_text(encoding="utf-8")
+dsp_cpp = (ROOT / "Source/DSP/VinylMasterDSP.cpp").read_text(encoding="utf-8")
+process_block = processor_cpp[
+    processor_cpp.index("void GuruVynilMasterSuiteAudioProcessor::processBlock"):
+    processor_cpp.index("juce::AudioProcessorEditor*", processor_cpp.index("void GuruVynilMasterSuiteAudioProcessor::processBlock"))
+]
+
+assert "deltaAudition" not in dsp_cpp, "DELTA must not affect DSP readiness or metering analysis"
+assert process_block.index("dsp.process") < process_block.index("if (bypassed)") < process_block.index("else if (deltaAudition)")
+assert "buffer.copyFrom(channel, 0, dryBuffer" in process_block, "BYPASS must restore dry audio after DSP analysis"
+assert "buffer.addFrom(channel, 0, dryBuffer, channel, 0, samplesToCopy, -1.0f)" in process_block
+assert "buffer.applyGain(-1.0f)" in process_block, "DELTA must output dry minus fully processed audio"
+assert "juce::AudioBuffer<float> dry" not in process_block
+assert "setSize(" not in process_block
+assert "makeCopyOf(" not in process_block
+
+print("Processor output-mode reference checks passed.")

@@ -184,12 +184,6 @@ void VinylMasterDSP::process(juce::AudioBuffer<float>& buffer, const GuruVinylPa
         left *= outputGain;
         right *= outputGain;
 
-        if (params.deltaAudition)
-        {
-            left = dryLeft - left;
-            right = dryRight - right;
-        }
-
         buffer.setSample(0, sample, left);
         if (channels > 1)
             buffer.setSample(1, sample, right);

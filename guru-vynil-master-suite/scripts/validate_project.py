@@ -27,6 +27,32 @@ for relative in required:
 
 processor = (ROOT / "Source/PluginProcessor.cpp").read_text(encoding="utf-8")
 editor = (ROOT / "Source/PluginEditor.cpp").read_text(encoding="utf-8")
+processor_h = (ROOT / "Source/PluginProcessor.h").read_text(encoding="utf-8")
+dsp_cpp = (ROOT / "Source/DSP/VinylMasterDSP.cpp").read_text(encoding="utf-8")
+dsp_h = (ROOT / "Source/DSP/VinylMasterDSP.h").read_text(encoding="utf-8")
+process_start = processor.find('void GuruVynilMasterSuiteAudioProcessor::processBlock')
+process_end = processor.find('juce::AudioProcessorEditor*', process_start)
+if process_start < 0 or process_end < 0:
+    errors.append("Could not find processBlock body")
+else:
+    body = processor[process_start:process_end]
+    if "juce::AudioBuffer<float> dry" in body or "setSize(" in body or "makeCopyOf(" in body:
+        errors.append("processBlock must not allocate or resize AudioBuffer storage")
+    bypass_pos = body.find("if (bypassed)")
+    delta_pos = body.find("else if (deltaAudition)")
+    dsp_pos = body.find("dsp.process")
+    if min(bypass_pos, delta_pos, dsp_pos) < 0 or not (dsp_pos < bypass_pos < delta_pos):
+        errors.append("processBlock must process first, then apply bypass before delta")
+    if "dryBuffer.copyFrom" not in body or "buffer.addFrom" not in body:
+        errors.append("processBlock must use reusable dryBuffer for dry/delta output")
+
+if "juce::AudioBuffer<float> dryBuffer" not in processor_h:
+    errors.append("PluginProcessor must own a reusable dryBuffer member")
+if "dryBuffer.setSize" not in processor:
+    errors.append("dryBuffer must be allocated in prepareToPlay")
+if "deltaAudition" in dsp_cpp or "deltaAudition" in dsp_h:
+    errors.append("VinylMasterDSP must not apply or know about delta audition")
+
 
 created_ids = set(re.findall(r'ParamIDs::([A-Za-z0-9_]+)', processor))
 string_ids = set(re.findall(r'setParameter\("([A-Za-z0-9_]+)"', editor))
