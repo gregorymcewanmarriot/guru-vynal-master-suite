@@ -1,0 +1,276 @@
+name: Build Windows 32-bit Audition CS6 Installer
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Installer version
+        required: true
+        default: "0.1.1"
+
+permissions:
+  contents: read
+
+jobs:
+  build-windows-x86:
+    name: Windows x86 VST3 and installer
+    runs-on: windows-2022
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Configure 32-bit build
+        working-directory: guru-vynil-master-suite
+        shell: pwsh
+        run: |
+          git config --global core.longpaths true
+
+          cmake `
+            -S . `
+            -B build-x86 `
+            -G "Visual Studio 17 2022" `
+            -A Win32 `
+            -DCMAKE_BUILD_TYPE=Release
+
+      - name: Compile 32-bit plugin
+        working-directory: guru-vynil-master-suite
+        shell: pwsh
+        run: |
+          cmake --build build-x86 --config Release --parallel 2
+
+      - name: Find and validate x86 VST3
+        working-directory: guru-vynil-master-suite
+        shell: pwsh
+        run: |
+          $bundles = Get-ChildItem `
+            -Path "build-x86" `
+            -Directory `
+            -Filter "*.vst3" `
+            -Recurse |
+            Where-Object {
+              Test-Path (Join-Path $_.FullName "Contents")
+            } |
+            Sort-Object { $_.FullName.Length }
+
+          $bundle = $bundles | Select-Object -First 1
+
+          if (-not $bundle) {
+            Get-ChildItem "build-x86" -Recurse |
+              Select-Object FullName
+
+            throw "No VST3 bundle was produced."
+          }
+
+          Write-Host "Found VST3 bundle:"
+          Write-Host $bundle.FullName
+
+          $stageRoot = Join-Path (Get-Location) "package-x86"
+          $stageBundle = Join-Path `
+            $stageRoot `
+            "GURU Vynil Master Suite.vst3"
+
+          Remove-Item `
+            $stageRoot `
+            -Recurse `
+            -Force `
+            -ErrorAction SilentlyContinue
+
+          New-Item `
+            -ItemType Directory `
+            -Path $stageRoot `
+            -Force |
+            Out-Null
+
+          Copy-Item `
+            $bundle.FullName `
+            $stageBundle `
+            -Recurse `
+            -Force
+
+          $binary = Get-ChildItem `
+            -Path $stageBundle `
+            -File `
+            -Filter "*.vst3" `
+            -Recurse |
+            Select-Object -First 1
+
+          if (-not $binary) {
+            throw "The VST3 bundle does not contain a plugin binary."
+          }
+
+          # Validate the Windows PE architecture.
+          # 0x014c means Intel 32-bit x86.
+          $bytes = [System.IO.File]::ReadAllBytes($binary.FullName)
+          $peOffset = [BitConverter]::ToInt32($bytes, 0x3c)
+          $machine = [BitConverter]::ToUInt16(
+            $bytes,
+            $peOffset + 4
+          )
+
+          if ($machine -ne 0x014c) {
+            throw (
+              "Expected x86 machine 0x014c, found 0x{0:X4}" `
+              -f $machine
+            )
+          }
+
+          Write-Host "Confirmed genuine 32-bit x86 binary."
+
+          # Ensure the VST3 bundle uses the correct x86-win folder.
+          $expectedFolder = Join-Path `
+            $stageBundle `
+            "Contents\x86-win"
+
+          if ($binary.Directory.FullName -ne $expectedFolder) {
+            New-Item `
+              -ItemType Directory `
+              -Path $expectedFolder `
+              -Force |
+              Out-Null
+
+            Copy-Item `
+              $binary.FullName `
+              (Join-Path `
+                $expectedFolder `
+                "GURU Vynil Master Suite.vst3") `
+              -Force
+
+            Get-ChildItem `
+              (Join-Path $stageBundle "Contents") `
+              -Directory |
+              Where-Object {
+                $_.Name -match "win$" -and
+                $_.Name -ne "x86-win"
+              } |
+              Remove-Item -Recurse -Force
+          }
+
+      - name: Create x86 Windows installer
+        working-directory: guru-vynil-master-suite
+        shell: pwsh
+        run: |
+          $version = "${{ inputs.version }}"
+          $projectRoot = (Get-Location).Path
+
+          $pluginSource = Join-Path `
+            $projectRoot `
+            "package-x86\GURU Vynil Master Suite.vst3"
+
+          $outputDirectory = Join-Path `
+            $projectRoot `
+            "installer-output-x86"
+
+          $installerScript = Join-Path `
+            $projectRoot `
+            "installer\guru-vynil-master-suite-x86.iss"
+
+          New-Item `
+            -ItemType Directory `
+            -Path $outputDirectory `
+            -Force |
+            Out-Null
+
+          New-Item `
+            -ItemType Directory `
+            -Path (Split-Path $installerScript) `
+            -Force |
+            Out-Null
+
+          $iss = @"
+          #define MyAppVersion "$version"
+          #define PluginSource "$pluginSource"
+          #define SetupOutput "$outputDirectory"
+
+          [Setup]
+          AppId={{B7087630-521E-4BC1-9ACB-32A7EA5D4A42}
+          AppName=GURU Vynil Master Suite 32-bit
+          AppVersion={#MyAppVersion}
+          AppPublisher=GURU
+          AppPublisherURL=https://thebuzz.co.za
+          DefaultDirName={commoncf32}\VST3
+          DisableDirPage=yes
+          DisableProgramGroupPage=yes
+          OutputDir={#SetupOutput}
+          OutputBaseFilename=GURU-Vynil-Master-Suite-Setup-{#MyAppVersion}-Windows-x86
+          Compression=lzma2
+          SolidCompression=yes
+          PrivilegesRequired=admin
+          Uninstallable=yes
+          WizardStyle=modern
+          SetupLogging=yes
+
+          [Files]
+          Source: "{#PluginSource}\*"; DestDir: "{app}\GURU Vynil Master Suite.vst3"; Flags: ignoreversion recursesubdirs createallsubdirs
+
+          [UninstallDelete]
+          Type: filesandordirs; Name: "{app}\GURU Vynil Master Suite.vst3"
+          "@
+
+          $iss |
+            Set-Content `
+              -Path $installerScript `
+              -Encoding UTF8
+
+          $programFilesX86 = [
+            Environment
+          ]::GetEnvironmentVariable("ProgramFiles(x86)")
+
+          $iscc = Join-Path `
+            $programFilesX86 `
+            "Inno Setup 6\ISCC.exe"
+
+          if (-not (Test-Path $iscc)) {
+            choco install innosetup --no-progress -y
+
+            $iscc = Join-Path `
+              $programFilesX86 `
+              "Inno Setup 6\ISCC.exe"
+          }
+
+          if (-not (Test-Path $iscc)) {
+            throw "Inno Setup compiler was not found."
+          }
+
+          & $iscc $installerScript
+
+          if ($LASTEXITCODE -ne 0) {
+            throw "Inno Setup failed with exit code $LASTEXITCODE"
+          }
+
+          $setup = Get-ChildItem `
+            -Path $outputDirectory `
+            -File `
+            -Filter "*.exe" |
+            Select-Object -First 1
+
+          if (-not $setup) {
+            throw "Installer executable was not produced."
+          }
+
+          $hash = Get-FileHash `
+            $setup.FullName `
+            -Algorithm SHA256
+
+          "$($hash.Hash)  $($setup.Name)" |
+            Set-Content `
+              "$($setup.FullName).sha256" `
+              -Encoding ASCII
+
+      - name: Upload Audition CS6 installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: GURU-Vynil-Master-Suite-${{ inputs.version }}-Windows-x86-Audition-CS6
+          path: |
+            guru-vynil-master-suite/installer-output-x86/*.exe
+            guru-vynil-master-suite/installer-output-x86/*.sha256
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload raw x86 VST3
+        uses: actions/upload-artifact@v4
+        with:
+          name: GURU-Vynil-Master-Suite-${{ inputs.version }}-Raw-x86-VST3
+          path: guru-vynil-master-suite/package-x86/GURU Vynil Master Suite.vst3
+          if-no-files-found: error
+          retention-days: 30
