@@ -56,6 +56,7 @@ jobs:
           $bundle = $bundles | Select-Object -First 1
 
           if (-not $bundle) {
+            Write-Host "No VST3 bundle found. Build contents:"
             Get-ChildItem "build-x86" -Recurse |
               Select-Object FullName
 
@@ -99,30 +100,30 @@ jobs:
             throw "The VST3 bundle does not contain a plugin binary."
           }
 
+          Write-Host "Found plugin binary:"
+          Write-Host $binary.FullName
+
           # Validate the Windows PE architecture.
           # 0x014c means Intel 32-bit x86.
           $bytes = [System.IO.File]::ReadAllBytes($binary.FullName)
           $peOffset = [BitConverter]::ToInt32($bytes, 0x3c)
-          $machine = [BitConverter]::ToUInt16(
-            $bytes,
-            $peOffset + 4
-          )
+          $machine = [BitConverter]::ToUInt16($bytes, $peOffset + 4)
 
           if ($machine -ne 0x014c) {
-            throw (
-              "Expected x86 machine 0x014c, found 0x{0:X4}" `
-              -f $machine
-            )
+            $machineHex = "0x{0:X4}" -f $machine
+            throw "Expected x86 machine 0x014c, but found $machineHex."
           }
 
           Write-Host "Confirmed genuine 32-bit x86 binary."
 
-          # Ensure the VST3 bundle uses the correct x86-win folder.
+          # Ensure that the bundle uses Contents\x86-win.
           $expectedFolder = Join-Path `
             $stageBundle `
             "Contents\x86-win"
 
           if ($binary.Directory.FullName -ne $expectedFolder) {
+            Write-Host "Moving binary into Contents\x86-win."
+
             New-Item `
               -ItemType Directory `
               -Path $expectedFolder `
@@ -146,6 +147,17 @@ jobs:
               Remove-Item -Recurse -Force
           }
 
+          $finalBinary = Join-Path `
+            $expectedFolder `
+            "GURU Vynil Master Suite.vst3"
+
+          if (-not (Test-Path $finalBinary)) {
+            throw "The final Contents\x86-win plugin binary is missing."
+          }
+
+          Write-Host "Final x86 VST3:"
+          Write-Host $finalBinary
+
       - name: Create x86 Windows installer
         working-directory: guru-vynil-master-suite
         shell: pwsh
@@ -165,6 +177,10 @@ jobs:
             $projectRoot `
             "installer\guru-vynil-master-suite-x86.iss"
 
+          if (-not (Test-Path $pluginSource)) {
+            throw "Staged x86 VST3 bundle was not found at $pluginSource"
+          }
+
           New-Item `
             -ItemType Directory `
             -Path $outputDirectory `
@@ -178,59 +194,64 @@ jobs:
             Out-Null
 
           $iss = @"
-          #define MyAppVersion "$version"
-          #define PluginSource "$pluginSource"
-          #define SetupOutput "$outputDirectory"
+#define MyAppVersion "$version"
+#define PluginSource "$pluginSource"
+#define SetupOutput "$outputDirectory"
 
-          [Setup]
-          AppId={{B7087630-521E-4BC1-9ACB-32A7EA5D4A42}
-          AppName=GURU Vynil Master Suite 32-bit
-          AppVersion={#MyAppVersion}
-          AppPublisher=GURU
-          AppPublisherURL=https://thebuzz.co.za
-          DefaultDirName={commoncf32}\VST3
-          DisableDirPage=yes
-          DisableProgramGroupPage=yes
-          OutputDir={#SetupOutput}
-          OutputBaseFilename=GURU-Vynil-Master-Suite-Setup-{#MyAppVersion}-Windows-x86
-          Compression=lzma2
-          SolidCompression=yes
-          PrivilegesRequired=admin
-          Uninstallable=yes
-          WizardStyle=modern
-          SetupLogging=yes
+[Setup]
+AppId={{B7087630-521E-4BC1-9ACB-32A7EA5D4A42}
+AppName=GURU Vynil Master Suite 32-bit
+AppVersion={#MyAppVersion}
+AppPublisher=GURU
+AppPublisherURL=https://thebuzz.co.za
+DefaultDirName={commoncf32}\VST3
+DisableDirPage=yes
+DisableProgramGroupPage=yes
+OutputDir={#SetupOutput}
+OutputBaseFilename=GURU-Vynil-Master-Suite-Setup-{#MyAppVersion}-Windows-x86
+Compression=lzma2
+SolidCompression=yes
+PrivilegesRequired=admin
+Uninstallable=yes
+WizardStyle=modern
+SetupLogging=yes
 
-          [Files]
-          Source: "{#PluginSource}\*"; DestDir: "{app}\GURU Vynil Master Suite.vst3"; Flags: ignoreversion recursesubdirs createallsubdirs
+[Files]
+Source: "{#PluginSource}\*"; DestDir: "{app}\GURU Vynil Master Suite.vst3"; Flags: ignoreversion recursesubdirs createallsubdirs
 
-          [UninstallDelete]
-          Type: filesandordirs; Name: "{app}\GURU Vynil Master Suite.vst3"
-          "@
+[UninstallDelete]
+Type: filesandordirs; Name: "{app}\GURU Vynil Master Suite.vst3"
+"@
 
           $iss |
             Set-Content `
               -Path $installerScript `
               -Encoding UTF8
 
-          $programFilesX86 = [
-            Environment
-          ]::GetEnvironmentVariable("ProgramFiles(x86)")
+          Write-Host "Generated Inno Setup script:"
+          Get-Content $installerScript
 
-          $iscc = Join-Path `
-            $programFilesX86 `
-            "Inno Setup 6\ISCC.exe"
+          $programFilesX86 = [Environment]::GetEnvironmentVariable("ProgramFiles(x86)")
+          $iscc = Join-Path $programFilesX86 "Inno Setup 6\ISCC.exe"
 
           if (-not (Test-Path $iscc)) {
+            Write-Host "Installing Inno Setup..."
             choco install innosetup --no-progress -y
 
-            $iscc = Join-Path `
-              $programFilesX86 `
-              "Inno Setup 6\ISCC.exe"
+            if ($LASTEXITCODE -ne 0) {
+              throw "Chocolatey failed to install Inno Setup."
+            }
+
+            $programFilesX86 = [Environment]::GetEnvironmentVariable("ProgramFiles(x86)")
+            $iscc = Join-Path $programFilesX86 "Inno Setup 6\ISCC.exe"
           }
 
           if (-not (Test-Path $iscc)) {
-            throw "Inno Setup compiler was not found."
+            throw "Inno Setup compiler was not found at $iscc"
           }
+
+          Write-Host "Using Inno Setup compiler:"
+          Write-Host $iscc
 
           & $iscc $installerScript
 
@@ -247,6 +268,9 @@ jobs:
           if (-not $setup) {
             throw "Installer executable was not produced."
           }
+
+          Write-Host "Created installer:"
+          Write-Host $setup.FullName
 
           $hash = Get-FileHash `
             $setup.FullName `
