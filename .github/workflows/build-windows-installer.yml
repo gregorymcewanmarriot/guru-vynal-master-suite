@@ -1,0 +1,134 @@
+name: Build Windows Installer
+
+'on':
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Installer version
+        required: true
+        default: "0.1.1"
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+jobs:
+  build-windows-x64:
+    name: Windows x64 VST3 and installer
+    runs-on: windows-2022
+
+    defaults:
+      run:
+        working-directory: guru-vynil-master-suite
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Resolve version
+        shell: pwsh
+        run: |
+          if ("${{ github.event_name }}" -eq "workflow_dispatch") {
+            $version = "${{ inputs.version }}"
+          } else {
+            $version = "${{ github.ref_name }}" -replace '^v', ''
+          }
+
+          if ($version -notmatch '^\d+\.\d+\.\d+(\.\d+)?$') {
+            throw "Invalid version: $version"
+          }
+
+          "PLUGIN_VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          Write-Host "Building version $version"
+
+      - name: Validate source package
+        shell: pwsh
+        run: |
+          # The repository was uploaded with the project inside a subfolder.
+          # Copy the root workflow into the project temporarily because the
+          # package validator checks that the workflow exists.
+          New-Item -ItemType Directory -Force -Path ".github\workflows" | Out-Null
+          Copy-Item -Path "..\.github\workflows\build-windows-installer.yml" -Destination ".github\workflows\build-windows-installer.yml" -Force
+
+          python scripts/validate_project.py
+          python tests/test_dsp_reference.py
+
+      - name: Configure Visual Studio build
+        shell: pwsh
+        run: |
+          git config --global core.longpaths true
+          cmake -S . -B build -G "Visual Studio 17 2022" -A x64 -DJUCE_BUILD_EXTRAS=OFF -DJUCE_BUILD_EXAMPLES=OFF
+
+      - name: Build Release VST3 and standalone app
+        shell: pwsh
+        run: |
+          cmake --build build --config Release --target GuruVynilMasterSuite_VST3 GuruVynilMasterSuite_Standalone --parallel 2
+
+      - name: Stage installer files
+        shell: pwsh
+        run: |
+          $root = Join-Path $PWD "build\GuruVynilMasterSuite_artefacts\Release"
+          $vst3 = Get-ChildItem -Path (Join-Path $root "VST3") -Directory -Filter "*.vst3" | Select-Object -First 1
+          $standalone = Get-ChildItem -Path (Join-Path $root "Standalone") -File -Filter "*.exe" | Select-Object -First 1
+
+          if (-not $vst3) { throw "VST3 bundle was not produced." }
+          if (-not $standalone) { throw "Standalone executable was not produced." }
+
+          New-Item -ItemType Directory -Force -Path "package\VST3", "package\Standalone", "dist" | Out-Null
+          Copy-Item -Path $vst3.FullName -Destination "package\VST3\$($vst3.Name)" -Recurse -Force
+          Copy-Item -Path $standalone.FullName -Destination "package\Standalone\$($standalone.Name)" -Force
+          Copy-Item -Path "README.md" -Destination "package\README.txt" -Force
+          Copy-Item -Path "CHANGELOG.md" -Destination "package\CHANGELOG.txt" -Force
+
+          Write-Host "VST3: $($vst3.FullName)"
+          Write-Host "Standalone: $($standalone.FullName)"
+
+      - name: Install Inno Setup
+        shell: pwsh
+        run: |
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) {
+            choco install innosetup --no-progress -y
+          }
+          if (-not (Test-Path $iscc)) {
+            throw "Inno Setup compiler was not found after installation."
+          }
+          "ISCC_PATH=$iscc" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Build Windows installer
+        shell: pwsh
+        run: |
+          $sourceRoot = (Resolve-Path "package").Path
+          & "$env:ISCC_PATH" "/DMyAppVersion=$env:PLUGIN_VERSION" "/DSourceRoot=$sourceRoot" "installer\GuruVynilMasterSuite.iss"
+
+          $installer = Get-ChildItem -Path "dist" -File -Filter "*.exe" | Select-Object -First 1
+          if (-not $installer) { throw "Installer was not produced." }
+          Write-Host "Installer: $($installer.FullName)"
+
+      - name: Generate checksums
+        shell: pwsh
+        run: |
+          Get-ChildItem -Path "dist" -File | ForEach-Object {
+            $hash = Get-FileHash -Path $_.FullName -Algorithm SHA256
+            "$($hash.Hash.ToLower())  $($_.Name)" | Out-File -FilePath "dist\SHA256SUMS.txt" -Encoding ascii -Append
+          }
+
+      - name: Upload installer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: GURU-Vynil-Master-Suite-${{ env.PLUGIN_VERSION }}-Windows-x64
+          path: |
+            guru-vynil-master-suite/dist/*.exe
+            guru-vynil-master-suite/dist/SHA256SUMS.txt
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload unpacked plugin artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: GURU-Vynil-Master-Suite-${{ env.PLUGIN_VERSION }}-Unpacked
+          path: guru-vynil-master-suite/package/
+          if-no-files-found: error
+          retention-days: 30
