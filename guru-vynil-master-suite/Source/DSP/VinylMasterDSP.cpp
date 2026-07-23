@@ -44,6 +44,19 @@ void VinylMasterDSP::reset()
     deEssHighPass.reset();
     limiter.reset();
     deEssEnvelope = 0.0f;
+    analysedSeconds = 0.0;
+    averagedRisk = 0.0f;
+    inputPeakHold = 0.0f;
+    outputPeakHold = 0.0f;
+    signalPresent.store(false);
+    analysisReady.store(false);
+    overloadWarning.store(false);
+    ceilingWarning.store(false);
+    inputPeakDb.store(kMinusInfinityDb);
+    outputPeakDb.store(kMinusInfinityDb);
+    inputPeakHoldDb.store(kMinusInfinityDb);
+    outputPeakHoldDb.store(kMinusInfinityDb);
+    riskScore.store(0.0f);
 }
 
 void VinylMasterDSP::updateFilters(const GuruVinylParameters& params)
@@ -115,8 +128,10 @@ void VinylMasterDSP::process(juce::AudioBuffer<float>& buffer, const GuruVinylPa
 
     for (int sample = 0; sample < samples; ++sample)
     {
-        float left = buffer.getSample(0, sample) * inputGain;
-        float right = channels > 1 ? buffer.getSample(1, sample) * inputGain : left;
+        const float dryLeft = buffer.getSample(0, sample);
+        const float dryRight = channels > 1 ? buffer.getSample(1, sample) : dryLeft;
+        float left = dryLeft * inputGain;
+        float right = dryRight * inputGain;
 
         blockInputPeak = juce::jmax(blockInputPeak, juce::jmax(std::abs(left), std::abs(right)));
 
@@ -199,10 +214,37 @@ void VinylMasterDSP::process(juce::AudioBuffer<float>& buffer, const GuruVinylPa
     if (gainToDb(blockInputPeak) > -0.5f)
         risk += 10.0f;
 
-    inputPeakDb.store(gainToDb(blockInputPeak));
-    outputPeakDb.store(gainToDb(blockOutputPeak));
+    const auto inputDb = gainToDb(blockInputPeak);
+    const auto outputDb = gainToDb(blockOutputPeak);
+    const bool activeSignal = inputDb > -72.0f;
+    if (!activeSignal)
+    {
+        analysedSeconds = 0.0;
+        averagedRisk = 0.0f;
+        inputPeakHold = 0.0f;
+        outputPeakHold = 0.0f;
+    }
+    else
+    {
+        const auto blockSeconds = static_cast<double>(samples) / sampleRate;
+        const auto previousSeconds = analysedSeconds;
+        analysedSeconds = juce::jmin(4.0, analysedSeconds + blockSeconds);
+        const auto alpha = static_cast<float>(blockSeconds / juce::jmax(0.001, analysedSeconds));
+        averagedRisk = previousSeconds <= 0.0 ? risk : averagedRisk + alpha * (risk - averagedRisk);
+        inputPeakHold = juce::jmax(inputPeakHold * std::pow(0.25f, static_cast<float>(blockSeconds)), blockInputPeak);
+        outputPeakHold = juce::jmax(outputPeakHold * std::pow(0.25f, static_cast<float>(blockSeconds)), blockOutputPeak);
+    }
+
+    inputPeakDb.store(activeSignal ? inputDb : kMinusInfinityDb);
+    outputPeakDb.store(activeSignal ? outputDb : kMinusInfinityDb);
+    inputPeakHoldDb.store(gainToDb(inputPeakHold));
+    outputPeakHoldDb.store(gainToDb(outputPeakHold));
     correlation.store(juce::jlimit(-1.0f, 1.0f, corr));
     lowSideDb.store(sideDb);
     deEssReductionDb.store(maxDeEssReduction);
-    riskScore.store(juce::jlimit(0.0f, 100.0f, risk));
+    signalPresent.store(activeSignal);
+    analysisReady.store(activeSignal && analysedSeconds >= 3.0);
+    overloadWarning.store(activeSignal && (inputDb >= -0.1f || outputDb >= -0.1f));
+    ceilingWarning.store(activeSignal && (outputDb >= params.outputCeilingDb - 0.15f));
+    riskScore.store(juce::jlimit(0.0f, 100.0f, averagedRisk));
 }

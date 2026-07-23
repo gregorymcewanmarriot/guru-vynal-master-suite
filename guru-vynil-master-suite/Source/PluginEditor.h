@@ -28,11 +28,12 @@ private:
     void timerCallback() override;
     void applyPreset(int presetIndex);
     void setParameter(const juce::String& id, float value);
-    static juce::String readinessText(float risk);
-    static juce::Colour readinessColour(float risk);
+    static juce::String readinessText(float risk, bool hasSignal, bool ready);
+    static juce::Colour readinessColour(float risk, bool hasSignal, bool ready);
 
     GuruVynilMasterSuiteAudioProcessor& processor;
     GuruLookAndFeel lookAndFeel;
+    juce::TooltipWindow tooltipWindow { this, 700 };
 
     Knob input;
     Knob subsonic;
@@ -50,14 +51,22 @@ private:
     juce::ComboBox presetBox;
     juce::TextButton autoSafeButton { "AUTO SAFE" };
     juce::TextButton bypassButton { "BYPASS" };
+    juce::TextButton deltaButton { "DELTA" };
     std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> bypassAttachment;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> deltaAttachment;
 
     float displayedRisk = 0.0f;
     float displayedCorrelation = 1.0f;
     float displayedInput = -100.0f;
     float displayedOutput = -100.0f;
+    float displayedInputHold = -100.0f;
+    float displayedOutputHold = -100.0f;
     float displayedLowSide = -100.0f;
     float displayedDeEss = 0.0f;
+    bool displayedSignalPresent = false;
+    bool displayedAnalysisReady = false;
+    bool displayedOverload = false;
+    bool displayedCeiling = false;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(GuruVynilMasterSuiteAudioProcessorEditor)
 };

@@ -14,6 +14,7 @@ constexpr auto softClip = "softClip";
 constexpr auto outputCeiling = "outputCeiling";
 constexpr auto outputGain = "outputGain";
 constexpr auto bypass = "bypass";
+constexpr auto delta = "delta";
 }
 
 GuruVynilMasterSuiteAudioProcessor::GuruVynilMasterSuiteAudioProcessor()
@@ -31,6 +32,7 @@ void GuruVynilMasterSuiteAudioProcessor::prepareToPlay(double newSampleRate, int
     spec.maximumBlockSize = static_cast<juce::uint32>(samplesPerBlock);
     spec.numChannels = static_cast<juce::uint32>(getTotalNumOutputChannels());
     dsp.prepare(spec);
+    dryBuffer.setSize(static_cast<int>(spec.numChannels), static_cast<int>(spec.maximumBlockSize));
 }
 
 void GuruVynilMasterSuiteAudioProcessor::releaseResources()
@@ -53,8 +55,33 @@ void GuruVynilMasterSuiteAudioProcessor::processBlock(juce::AudioBuffer<float>& 
     for (int channel = getTotalNumInputChannels(); channel < getTotalNumOutputChannels(); ++channel)
         buffer.clear(channel, 0, buffer.getNumSamples());
 
-    if (apvts.getRawParameterValue(ParamIDs::bypass)->load() < 0.5f)
-        dsp.process(buffer, getCurrentParameters());
+    const auto bypassed = apvts.getRawParameterValue(ParamIDs::bypass)->load() >= 0.5f;
+    const auto deltaAudition = apvts.getRawParameterValue(ParamIDs::delta)->load() >= 0.5f;
+    const auto channelsToCopy = juce::jmin(buffer.getNumChannels(), dryBuffer.getNumChannels());
+    const auto samplesToCopy = juce::jmin(buffer.getNumSamples(), dryBuffer.getNumSamples());
+
+    if (bypassed || deltaAudition)
+    {
+        jassert(buffer.getNumSamples() <= dryBuffer.getNumSamples());
+        for (int channel = 0; channel < channelsToCopy; ++channel)
+            dryBuffer.copyFrom(channel, 0, buffer, channel, 0, samplesToCopy);
+    }
+
+    dsp.process(buffer, getCurrentParameters());
+
+    if (bypassed)
+    {
+        for (int channel = 0; channel < channelsToCopy; ++channel)
+            buffer.copyFrom(channel, 0, dryBuffer, channel, 0, samplesToCopy);
+    }
+    else if (deltaAudition)
+    {
+        for (int channel = 0; channel < channelsToCopy; ++channel)
+        {
+            buffer.applyGain(channel, 0, samplesToCopy, -1.0f);
+            buffer.addFrom(channel, 0, dryBuffer, channel, 0, samplesToCopy);
+        }
+    }
 }
 
 juce::AudioProcessorEditor* GuruVynilMasterSuiteAudioProcessor::createEditor()
@@ -107,6 +134,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout GuruVynilMasterSuiteAudioPro
     layout.add(std::make_unique<APF>(ParamIDs::outputCeiling, "Ceiling", juce::NormalisableRange<float>(-3.0f, -0.1f, 0.1f), -1.0f, "dB"));
     layout.add(std::make_unique<APF>(ParamIDs::outputGain, "Output", juce::NormalisableRange<float>(-12.0f, 6.0f, 0.1f), 0.0f, "dB"));
     layout.add(std::make_unique<juce::AudioParameterBool>(ParamIDs::bypass, "Bypass", false));
+    layout.add(std::make_unique<juce::AudioParameterBool>(ParamIDs::delta, "Delta Audition", false));
 
     return layout;
 }

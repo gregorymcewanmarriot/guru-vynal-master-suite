@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.1.2 — Metering and readiness update
+
+- Added NO SIGNAL and ANALYSING readiness states before stable scoring is shown.
+- Added averaged multi-second readiness analysis for READY, REVIEW and CUT RISK decisions.
+- Added DELTA audition, peak-hold markers, overload warnings and ceiling warnings.
+- Added parameter units, control tooltips and a more natural Extreme Metal low-width default.
+- Updated project, interface, documentation and installer versions to 0.1.2.
+- Retained both Windows x64 installer and x86 Adobe Audition CS6 workflows.
+
 ## 0.1.1 — Cloud installer build
 
 - Added a GitHub Actions workflow that builds the Windows x64 VST3 and standalone application on a hosted Windows 2022 runner.

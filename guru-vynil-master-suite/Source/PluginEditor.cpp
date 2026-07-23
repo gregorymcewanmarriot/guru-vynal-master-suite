@@ -45,6 +45,7 @@ GuruVynilMasterSuiteAudioProcessorEditor::GuruVynilMasterSuiteAudioProcessorEdit
         presetBox.addItem(presetNames[index], index + 1);
     presetBox.setSelectedId(1, juce::dontSendNotification);
     presetBox.onChange = [this] { applyPreset(presetBox.getSelectedItemIndex()); };
+    presetBox.setTooltip("Choose a vinyl-preparation preset.");
     addAndMakeVisible(presetBox);
 
     autoSafeButton.onClick = [this]
@@ -57,12 +58,20 @@ GuruVynilMasterSuiteAudioProcessorEditor::GuruVynilMasterSuiteAudioProcessorEdit
         setParameter("softClip", 10.0f);
         setParameter("outputCeiling", -1.2f);
     };
+    autoSafeButton.setTooltip("Apply conservative vinyl-safe settings.");
     addAndMakeVisible(autoSafeButton);
 
     bypassButton.setClickingTogglesState(true);
+    bypassButton.setTooltip("Mute processing for bypass comparison.");
     addAndMakeVisible(bypassButton);
     bypassAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment>(
         processor.apvts, "bypass", bypassButton);
+
+    deltaButton.setClickingTogglesState(true);
+    deltaButton.setTooltip("Audition only the difference between dry and processed audio.");
+    addAndMakeVisible(deltaButton);
+    deltaAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment>(
+        processor.apvts, "delta", deltaButton);
 
     startTimerHz(30);
 }
@@ -77,9 +86,14 @@ void GuruVynilMasterSuiteAudioProcessorEditor::configureKnob(Knob& knob,
                                                               const juce::String& title)
 {
     knob.slider.setSliderStyle(juce::Slider::RotaryHorizontalVerticalDrag);
-    knob.slider.setTextBoxStyle(juce::Slider::TextBoxBelow, false, 74, 22);
+    knob.slider.setTextBoxStyle(juce::Slider::TextBoxBelow, false, 82, 22);
     if (auto* parameter = processor.apvts.getParameter(parameterId))
+    {
         knob.slider.setDoubleClickReturnValue(true, parameter->convertFrom0to1(parameter->getDefaultValue()));
+        if (parameter->getLabel().isNotEmpty())
+            knob.slider.setTextValueSuffix(" " + parameter->getLabel());
+        knob.slider.setTooltip(parameter->getName(64) + " (" + parameter->getLabel() + ")");
+    }
     addAndMakeVisible(knob.slider);
 
     knob.label.setText(title, juce::dontSendNotification);
@@ -116,7 +130,7 @@ void GuruVynilMasterSuiteAudioProcessorEditor::paint(juce::Graphics& g)
     g.drawText("PREPARE THE MASTER  |  PROTECT THE CUT", 28, 52, 480, 20,
                juce::Justification::centredLeft);
 
-    const auto riskColour = readinessColour(displayedRisk);
+    const auto riskColour = readinessColour(displayedRisk, displayedSignalPresent, displayedAnalysisReady);
     g.setColour(juce::Colour(0xff151719));
     g.fillRoundedRectangle(static_cast<float>(getWidth() - 270), 16.0f, 244.0f, 54.0f, 6.0f);
     g.setColour(riskColour);
@@ -124,7 +138,7 @@ void GuruVynilMasterSuiteAudioProcessorEditor::paint(juce::Graphics& g)
     g.setFont(juce::FontOptions(11.0f, juce::Font::bold));
     g.drawText("CUT READINESS", getWidth() - 254, 22, 100, 18, juce::Justification::centredLeft);
     g.setFont(juce::FontOptions(22.0f, juce::Font::bold));
-    g.drawText(readinessText(displayedRisk), getWidth() - 254, 39, 210, 25,
+    g.drawText(readinessText(displayedRisk, displayedSignalPresent, displayedAnalysisReady), getWidth() - 254, 39, 210, 25,
                juce::Justification::centredLeft);
 
     const auto scaleX = static_cast<float>(getWidth()) / static_cast<float>(designWidth);
@@ -138,11 +152,11 @@ void GuruVynilMasterSuiteAudioProcessorEditor::paint(juce::Graphics& g)
 
     struct MeterItem { const char* title; float value; float minimum; float maximum; juce::String suffix; };
     const std::array<MeterItem, 5> meters {{
-        { "INPUT PEAK", displayedInput, -60.0f, 0.0f, " dB" },
+        { "INPUT PEAK", displayedInput, -60.0f, 0.0f, " dBFS" },
         { "CORRELATION", displayedCorrelation, -1.0f, 1.0f, "" },
         { "LOW SIDE", displayedLowSide, -60.0f, 0.0f, " dB" },
         { "HF REDUCTION", displayedDeEss, 0.0f, 12.0f, " dB" },
-        { "OUTPUT PEAK", displayedOutput, -60.0f, 0.0f, " dB" }
+        { "OUTPUT PEAK", displayedOutput, -60.0f, 0.0f, " dBFS" }
     }};
 
     const float gap = 14.0f * scaleX;
@@ -166,6 +180,15 @@ void GuruVynilMasterSuiteAudioProcessorEditor::paint(juce::Graphics& g)
                                                             : juce::Colour(0xffd6922e));
         g.fillRoundedRectangle(bar.withWidth(bar.getWidth() * normal), 3.0f);
 
+        if (i == 0 || i == 4)
+        {
+            const float holdValue = i == 0 ? displayedInputHold : displayedOutputHold;
+            const float holdNormal = juce::jlimit(0.0f, 1.0f, juce::jmap(holdValue, meters[i].minimum, meters[i].maximum, 0.0f, 1.0f));
+            const float markerX = bar.getX() + bar.getWidth() * holdNormal;
+            g.setColour(juce::Colour(0xfff1e7d2));
+            g.drawLine(markerX, bar.getY() - 2.0f, markerX, bar.getBottom() + 2.0f, 2.0f);
+        }
+
         g.setColour(juce::Colour(0xfff0e8d7));
         g.setFont(juce::FontOptions(18.0f, juce::Font::bold));
         const auto decimals = i == 1 ? 2 : 1;
@@ -175,9 +198,17 @@ void GuruVynilMasterSuiteAudioProcessorEditor::paint(juce::Graphics& g)
 
     g.setColour(juce::Colour(0xff6e7377));
     g.setFont(juce::FontOptions(10.0f));
+    if (displayedOverload || displayedCeiling)
+    {
+        g.setColour(displayedOverload ? juce::Colour(0xffc8473d) : juce::Colour(0xffd6922e));
+        g.setFont(juce::FontOptions(12.0f, juce::Font::bold));
+        g.drawText(displayedOverload ? "OVERLOAD: reduce input/output gain." : "CEILING WARNING: output is hitting the limiter ceiling.",
+                   36, getHeight() - 60, getWidth() - 72, 18, juce::Justification::centredLeft);
+    }
+
     g.drawText("Diagnostic estimate only - final cutting decisions remain with the cutting engineer.",
                36, getHeight() - 39, getWidth() - 72, 16, juce::Justification::centredLeft);
-    g.drawText("v0.1.1", getWidth() - 100, getHeight() - 39, 64, 16,
+    g.drawText("v0.1.2", getWidth() - 100, getHeight() - 39, 64, 16,
                juce::Justification::centredRight);
 }
 
@@ -189,6 +220,8 @@ void GuruVynilMasterSuiteAudioProcessorEditor::resized()
     presetBox.setBounds(36, 101, juce::roundToInt(250.0f * scaleX), juce::roundToInt(30.0f * scaleY));
     autoSafeButton.setBounds(juce::roundToInt(300.0f * scaleX), 101,
                              juce::roundToInt(122.0f * scaleX), juce::roundToInt(30.0f * scaleY));
+    deltaButton.setBounds(getWidth() - juce::roundToInt(254.0f * scaleX), 101,
+                          juce::roundToInt(104.0f * scaleX), juce::roundToInt(30.0f * scaleY));
     bypassButton.setBounds(getWidth() - juce::roundToInt(140.0f * scaleX), 101,
                            juce::roundToInt(104.0f * scaleX), juce::roundToInt(30.0f * scaleY));
 
@@ -216,6 +249,12 @@ void GuruVynilMasterSuiteAudioProcessorEditor::timerCallback()
     displayedOutput = juce::jmap(0.20f, displayedOutput, dsp.getOutputPeakDb());
     displayedLowSide = juce::jmap(0.18f, displayedLowSide, dsp.getLowSideDb());
     displayedDeEss = juce::jmap(0.20f, displayedDeEss, dsp.getDeEssReductionDb());
+    displayedInputHold = dsp.getInputPeakHoldDb();
+    displayedOutputHold = dsp.getOutputPeakHoldDb();
+    displayedSignalPresent = dsp.hasSignal();
+    displayedAnalysisReady = dsp.isAnalysisReady();
+    displayedOverload = dsp.hasOverloadWarning();
+    displayedCeiling = dsp.hasCeilingWarning();
     repaint();
 }
 
@@ -242,7 +281,7 @@ void GuruVynilMasterSuiteAudioProcessorEditor::applyPreset(int presetIndex)
         { 0.0f, 25.0f, 125.0f, 15.0f, 7000.0f, -18.0f, 4.0f, 12.0f, -1.0f, 0.0f },
         { -1.0f, 30.0f, 170.0f, 0.0f, 6200.0f, -21.0f, 6.0f, 8.0f, -1.5f, 0.0f },
         { -0.5f, 25.0f, 120.0f, 12.0f, 6600.0f, -18.0f, 4.5f, 18.0f, -1.0f, 0.0f },
-        { -1.0f, 28.0f, 145.0f, 5.0f, 5800.0f, -22.0f, 6.5f, 22.0f, -1.2f, 0.0f },
+        { -1.0f, 28.0f, 145.0f, 15.0f, 5800.0f, -22.0f, 6.5f, 22.0f, -1.2f, 0.0f },
         { -1.0f, 30.0f, 180.0f, 0.0f, 7400.0f, -17.0f, 3.0f, 15.0f, -1.2f, 0.0f },
         { 0.0f, 20.0f, 90.0f, 45.0f, 8200.0f, -14.0f, 2.5f, 4.0f, -1.0f, 0.0f },
         { 0.0f, 15.0f, 60.0f, 100.0f, 12000.0f, 0.0f, 0.0f, 0.0f, -0.1f, 0.0f }
@@ -264,8 +303,12 @@ void GuruVynilMasterSuiteAudioProcessorEditor::applyPreset(int presetIndex)
     setParameter("outputGain", v.output);
 }
 
-juce::String GuruVynilMasterSuiteAudioProcessorEditor::readinessText(float risk)
+juce::String GuruVynilMasterSuiteAudioProcessorEditor::readinessText(float risk, bool hasSignal, bool ready)
 {
+    if (!hasSignal)
+        return "NO SIGNAL";
+    if (!ready)
+        return "ANALYSING";
     if (risk < 30.0f)
         return "READY";
     if (risk < 65.0f)
@@ -273,8 +316,12 @@ juce::String GuruVynilMasterSuiteAudioProcessorEditor::readinessText(float risk)
     return "CUT RISK";
 }
 
-juce::Colour GuruVynilMasterSuiteAudioProcessorEditor::readinessColour(float risk)
+juce::Colour GuruVynilMasterSuiteAudioProcessorEditor::readinessColour(float risk, bool hasSignal, bool ready)
 {
+    if (!hasSignal)
+        return juce::Colour(0xff6e7377);
+    if (!ready)
+        return juce::Colour(0xff8e9295);
     if (risk < 30.0f)
         return juce::Colour(0xff6cad71);
     if (risk < 65.0f)

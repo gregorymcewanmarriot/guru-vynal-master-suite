@@ -15,15 +15,15 @@ You do **not** need Visual Studio, CMake or Git on your own computer. The includ
 1. Open the repository's **Actions** tab.
 2. Select **Build Windows Installer**.
 3. Choose **Run workflow**.
-4. Keep the version as `0.1.1` and run it.
+4. Keep the version as `0.1.2` and run it.
 5. Open the completed workflow run.
 6. Download the artifact named similar to:
 
-   `GURU-Vynil-Master-Suite-0.1.1-Windows-x64`
+   `GURU-Vynil-Master-Suite-0.1.2-Windows-x64`
 
 7. Extract the downloaded artifact and run:
 
-   `GURU-Vynil-Master-Suite-Setup-0.1.1-Windows-x64.exe`
+   `GURU-Vynil-Master-Suite-Setup-0.1.2-Windows-x64.exe`
 
 ## What the installer does
 
