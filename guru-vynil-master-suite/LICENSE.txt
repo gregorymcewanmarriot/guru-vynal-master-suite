@@ -1,0 +1,7 @@
+Copyright (c) 2026 GURU. All rights reserved.
+
+This prototype source code may be used and modified by GURU for development and evaluation.
+It may not be redistributed, relicensed, sold, or incorporated into another product without
+written permission from GURU.
+
+Third-party dependencies, including JUCE, remain subject to their own licence terms.
